@@ -15,8 +15,8 @@ from sql_agent.graph import sql_agent_chain
 
 load_dotenv()
 
-os.environ["LANGCHAIN_PROJECT"] = f"Banner Flip Engine - {uuid.uuid4().hex[0:8]}"
-os.environ["LANGCHAIN_TRACING_V2"] = "true"
+# os.environ["LANGCHAIN_PROJECT"] = f"Banner Flip Engine - {uuid.uuid4().hex[0:8]}"
+# os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 # Define cache file path
 CACHE_FILE = "cache/question_cache.json"
