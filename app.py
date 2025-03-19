@@ -1,5 +1,6 @@
 import uuid, os
 import re
+import json
 from dotenv import load_dotenv
 import chainlit as cl
 import pandas as pd
@@ -16,6 +17,40 @@ load_dotenv()
 
 os.environ["LANGCHAIN_PROJECT"] = f"Banner Flip Engine - {uuid.uuid4().hex[0:8]}"
 os.environ["LANGCHAIN_TRACING_V2"] = "true"
+
+# Define cache file path
+CACHE_FILE = "cache/question_cache.json"
+
+# Function to load cache from disk
+def load_cache():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading cache: {e}")
+    print(f"Cache file not found. Will create a new one at: {CACHE_FILE}")
+    return {}
+
+# Function to save cache to disk
+def save_cache(cache):
+    try:
+        # Ensure directory exists
+        cache_dir = os.path.dirname(CACHE_FILE)
+        if cache_dir and not os.path.exists(cache_dir):
+            os.makedirs(cache_dir, exist_ok=True)
+            
+        # Write cache to file
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache, f)
+    except Exception as e:
+        print(f"Error saving cache: {e}")
+
+# Global cache variable
+GLOBAL_CACHE = load_cache()
+# Initialize with empty cache if loading failed
+if GLOBAL_CACHE is None:
+    GLOBAL_CACHE = {}
 
 @tool("SQLAgent", description="Use this tool when you need to query information about competitor stores for Save-A-Lot. This tool can analyze store data to identify banner flip opportunities (converting competitor stores to Save-A-Lot stores). It's best used for questions about: store locations, distances between stores or to specific locations, store ownership information (independent vs. chain stores), parent company size, and other store attributes. The tool has special geospatial capabilities including distance calculation between coordinates and named locations. Example queries: 'Find independent stores within 10 miles of Chicago', 'How many competitor stores are in Florida?', 'Show stores owned by parent companies with fewer than 10 stores', 'List stores closest to Denver', 'Which independent stores in Tennessee might be good banner flip opportunities?' or 'Show all information for Smith's Grocery in Nashville'")
 async def sql_agent_tool(input: str) -> str:
@@ -77,31 +112,28 @@ def html_table_to_dataframe(html_table):
 @cl.on_chat_start
 async def start():
     cl.user_session.set("app", app)
+    # Initialize session cache with the persistent global cache
+    cl.user_session.set("cache", GLOBAL_CACHE)
+    
+    # Send welcome message
+    welcome_message = """## Welcome to Save-A-Lot Banner Flip Engine
 
-@cl.on_message
-async def handle(message: cl.Message):
-    app = cl.user_session.get("app")
-    
-    state = {"messages": [HumanMessage(content=message.content)]}
-    response = await app.ainvoke(state)
-    
-    # Check if a tool was called in the response
-    tool_output = None
-    
-    # Find the tool response message (typically the second-to-last message)
-    for msg in reversed(response["messages"]):
-        if hasattr(msg, 'name') and msg.name in ["SQLAgent", "StoreResearch"]:
-            # Found a tool response, use it directly
-            tool_output = msg.content
-            break
-    
-    # If we have direct tool output, use it instead of the agent's summary
-    if tool_output:
-        content = tool_output
-    else:
-        # No tool was called, use the agent's regular response
-        content = response["messages"][-1].content
-    
+This tool helps you analyze competitor stores to identify the most promising banner flip opportunities.
+
+### Sample Questions for Competitor Store Data:
+- Find independent stores within 20 miles of Fort Lauderdale, FL
+- Which stores in Cleveland, OH have parent companies with fewer than 5 locations?
+- Show me all stores within 100 miles of Winchester distribution center sorted by distance
+
+### Deep Store Research Example:
+- Research Smith's Grocery in Nashville
+
+You can query competitor store information or request in-depth research on specific stores.
+"""
+    await cl.Message(content=welcome_message).send()
+
+# Function to process and render responses with tables if present
+async def render_response(content):
     # Process HTML tables if present
     table_match = re.search(r'(<table>.*?</table>)\s*', content, re.DOTALL)
     
@@ -125,6 +157,50 @@ async def handle(message: cl.Message):
     else:
         # No table found, send as regular message
         await cl.Message(content=content).send()
+
+@cl.on_message
+async def handle(message: cl.Message):
+    app = cl.user_session.get("app")
+    cache = cl.user_session.get("cache")
+    
+    # Convert message content to lowercase for case-insensitive matching
+    message_key = message.content.lower()
+    
+    # Check if the question is in cache (case insensitive)
+    if message_key in cache:
+        cached_response = cache[message_key]
+        # Use the render_response function for cached responses
+        await render_response(cached_response)
+        return
+    
+    state = {"messages": [HumanMessage(content=message.content)]}
+    response = await app.ainvoke(state)
+    
+    # Check if a tool was called in the response
+    tool_output = None
+    
+    # Find the tool response message (typically the second-to-last message)
+    for msg in reversed(response["messages"]):
+        if hasattr(msg, 'name') and msg.name in ["SQLAgent", "StoreResearch"]:
+            # Found a tool response, use it directly
+            tool_output = msg.content
+            break
+    
+    # If we have direct tool output, use it instead of the agent's summary
+    if tool_output:
+        content = tool_output
+    else:
+        # No tool was called, use the agent's regular response
+        content = response["messages"][-1].content
+    
+    # Update both the session cache and global cache with lowercase key
+    cache[message_key] = content
+    GLOBAL_CACHE[message_key] = content
+    # Persist the updated cache to disk
+    save_cache(GLOBAL_CACHE)
+    
+    # Use the render_response function for new responses
+    await render_response(content)
 
 # async def handle(message: cl.Message):
 #     app = cl.user_session.get("app")

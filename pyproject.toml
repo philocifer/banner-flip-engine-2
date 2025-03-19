@@ -27,4 +27,5 @@ dependencies = [
     "geopy>=2.4.1",
     "chainlit>=2.3.0",
     "beautifulsoup4>=4.13.3",
+    "websockets>=15.0.1",
 ]

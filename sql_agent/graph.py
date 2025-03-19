@@ -161,6 +161,8 @@ Always prefer to use distance_to_location when user asks about stores near a cit
 IMPORTANT COLUMN METADATA:
 - independent_store_indicator: Indicates if a store is independent or part of a chain. Valid values are "Independent Store" or "Chain Store".
 - parent_company_store_count: The range of the number of stores in the parent company. Valuid values are "1 Store", "2-3 Stores", "4-5 Stores", "6-10 Stores", "11-25 Stores", "26-50 Stores", "51-100 Stores", "101-200 Stores", "201-500 Stores".
+- closest_dc_name: The name of the distribution center closest to the store.
+- closest_dc_distance_miles: The distance in miles between the store and the closest distribution center.
 
 DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the database.
 
